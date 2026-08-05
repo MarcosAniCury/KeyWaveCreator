@@ -1,0 +1,67 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "keywave-creator"
+version = "0.1.7"
+description = "Create portable KeyWave rhythm-game packages from authorized media."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "jsonschema>=4.25,<5",
+  "numpy>=2.2,<3",
+  "platformdirs>=4.4,<5",
+  "PySide6>=6.10,<6.12",
+  "scipy>=1.16,<2",
+  "soundfile>=0.13,<1",
+  "yt-dlp[default]==2026.6.9",
+]
+
+[project.optional-dependencies]
+neural = ["beat-this==1.1.0"]
+build = [
+  "Nuitka==4.1.3",
+  "ordered-set>=4.1,<5",
+  "zstandard>=0.23,<1",
+]
+dev = [
+  "mypy>=1.17,<2",
+  "pytest>=8.4,<9",
+  "pytest-cov>=6.2,<7",
+  "hypothesis>=6.138,<7",
+  "ruff>=0.12,<1",
+  "scipy-stubs>=1.18,<1.19",
+  "types-jsonschema>=4.25,<5",
+]
+
+[project.scripts]
+keywave-creator = "keywave_creator.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/keywave_creator"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"contract/schemas" = "keywave_creator/_schemas"
+"src/keywave_creator/presentation/assets/keywave-app-icon.png" = "keywave_creator/presentation/assets/keywave-app-icon.png"
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["keywave_creator"]
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = "soundfile"
+ignore_missing_imports = true

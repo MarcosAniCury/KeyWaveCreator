@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keywave.local/schemas/1.0/manifest.schema.json",
+  "title": "KeyWave package manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "formatVersion",
+    "packageId",
+    "requiredFeatures",
+    "title",
+    "artist",
+    "durationMs",
+    "source",
+    "generator",
+    "sync",
+    "media",
+    "charts"
+  ],
+  "properties": {
+    "formatVersion": { "type": "string", "pattern": "^1\\.[0-9]+\\.[0-9]+$" },
+    "packageId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "requiredFeatures": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "artist": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "durationMs": { "type": "integer", "minimum": 1, "maximum": 1800000 },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["local", "youtube"] },
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "algorithmVersion", "seed", "confidence"],
+      "properties": {
+        "version": { "type": "string" },
+        "algorithmVersion": { "type": "string" },
+        "seed": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "sync": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chartOffsetMs", "videoOffsetMs"],
+      "properties": {
+        "chartOffsetMs": { "type": "integer", "minimum": -10000, "maximum": 10000 },
+        "videoOffsetMs": { "type": "integer", "minimum": -10000, "maximum": 10000 }
+      }
+    },
+    "media": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["audio"],
+      "properties": {
+        "audio": { "$ref": "#/$defs/file" },
+        "video": { "$ref": "#/$defs/file" },
+        "cover": { "$ref": "#/$defs/file" }
+      }
+    },
+    "charts": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": { "$ref": "#/$defs/chart" }
+    }
+  },
+  "$defs": {
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sizeBytes", "sha256", "mediaType"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._/-]{0,127}$" },
+        "sizeBytes": { "type": "integer", "minimum": 1, "maximum": 2147483648 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "mediaType": { "type": "string", "minLength": 1 }
+      }
+    },
+    "chart": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sizeBytes",
+        "sha256",
+        "mediaType",
+        "difficulty",
+        "chartId",
+        "noteCount",
+        "activeLanes"
+      ],
+      "properties": {
+        "path": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._/-]{0,127}$" },
+        "sizeBytes": { "type": "integer", "minimum": 1, "maximum": 2147483648 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "mediaType": { "const": "application/vnd.keywave.chart+json" },
+        "difficulty": { "enum": ["easy", "medium", "hard", "extreme"] },
+        "chartId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "noteCount": { "type": "integer", "minimum": 1, "maximum": 100000 },
+        "activeLanes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 0, "maximum": 5 }
+        }
+      }
+    }
+  }
+}

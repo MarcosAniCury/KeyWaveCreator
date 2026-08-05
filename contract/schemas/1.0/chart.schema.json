@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keywave.local/schemas/1.0/chart.schema.json",
+  "title": "KeyWave chart",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["formatVersion", "chartId", "difficulty", "laneCount", "activeLanes", "notes"],
+  "properties": {
+    "formatVersion": { "type": "string", "pattern": "^1\\.[0-9]+\\.[0-9]+$" },
+    "chartId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "difficulty": { "enum": ["easy", "medium", "hard", "extreme"] },
+    "laneCount": { "const": 6 },
+    "activeLanes": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 6,
+      "uniqueItems": true,
+      "items": { "type": "integer", "minimum": 0, "maximum": 5 }
+    },
+    "notes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100000,
+      "items": { "$ref": "#/$defs/note" }
+    }
+  },
+  "$defs": {
+    "note": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "timeMs", "lane", "type"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "timeMs": { "type": "integer", "minimum": 0, "maximum": 1800000 },
+            "lane": { "type": "integer", "minimum": 0, "maximum": 5 },
+            "type": { "const": "tap" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "timeMs", "lane", "type", "durationMs"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "timeMs": { "type": "integer", "minimum": 0, "maximum": 1800000 },
+            "lane": { "type": "integer", "minimum": 0, "maximum": 5 },
+            "type": { "const": "hold" },
+            "durationMs": { "type": "integer", "minimum": 1, "maximum": 6000 }
+          }
+        }
+      ]
+    }
+  }
+}
+
