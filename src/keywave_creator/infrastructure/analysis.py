@@ -15,9 +15,11 @@ from keywave_creator.application.models import CancellationToken
 from keywave_creator.domain.analysis import AnalysisResult, FeaturePoint
 
 FRAME_SIZE = 1024
+HOP_SIZE = 512
 MIN_BPM = 60.0
 MAX_BPM = 200.0
 SILENCE_FLOOR_BELOW_PEAK_DB = -42.0
+MINIMUM_ONSET_INTERVAL_SECONDS = 0.115
 
 
 class StreamingFeatureExtractor:
@@ -36,7 +38,7 @@ class StreamingFeatureExtractor:
     ) -> AnalysisResult:
         cancellation.raise_if_cancelled()
         try:
-            sample_rate, duration_ms, rms, centroid_bias = self._stream_features(
+            sample_rate, duration_ms, rms, centroid_bias, spectral_flux = self._stream_features(
                 audio_path,
                 cancellation,
             )
@@ -62,11 +64,18 @@ class StreamingFeatureExtractor:
 
         cancellation.raise_if_cancelled()
         log_energy = np.log1p(rms * 1000.0)
-        onset_envelope = np.maximum(0.0, np.diff(log_energy, prepend=log_energy[0]))
+        signed_energy_change = np.diff(log_energy, prepend=log_energy[0])
+        energy_novelty = np.maximum(0.0, signed_energy_change)
+        spectral_novelty = self._normalize_novelty(spectral_flux, relative_floor=0.005)
+        spectral_novelty = np.where(signed_energy_change < -0.05, 0.0, spectral_novelty)
+        onset_envelope = (
+            0.28 * self._normalize_novelty(energy_novelty, relative_floor=0.03)
+            + 0.72 * spectral_novelty
+        )
         if onset_envelope.size >= 3:
             onset_envelope = np.convolve(
                 onset_envelope,
-                np.asarray((0.2, 0.6, 0.2), dtype=np.float64),
+                np.asarray((0.15, 0.70, 0.15), dtype=np.float64),
                 mode="same",
             )
         positive = onset_envelope[onset_envelope > 0]
@@ -76,18 +85,15 @@ class StreamingFeatureExtractor:
                 "No usable rhythmic events were found in the audio.",
             )
 
-        frame_rate = sample_rate / FRAME_SIZE
+        frame_rate = sample_rate / HOP_SIZE
         prominence = max(float(np.std(onset_envelope)) * 0.35, float(np.median(positive)) * 0.5)
-        peak_frames, properties = find_peaks(
+        peak_frames, _ = find_peaks(
             onset_envelope,
-            distance=max(1, round(frame_rate * 0.085)),
+            distance=max(1, round(frame_rate * MINIMUM_ONSET_INTERVAL_SECONDS)),
             prominence=prominence,
         )
         if peak_frames.size == 0:
             peak_frames = np.asarray([int(np.argmax(onset_envelope))], dtype=np.int64)
-        peak_strengths = properties.get("prominences")
-        if not isinstance(peak_strengths, np.ndarray) or len(peak_strengths) != len(peak_frames):
-            peak_strengths = onset_envelope[peak_frames]
 
         beat_frames, bpm, beat_consistency = self._estimate_beats(
             onset_envelope,
@@ -106,7 +112,9 @@ class StreamingFeatureExtractor:
             cancellation.raise_if_cancelled()
             if float(rms[frame]) < silence_floor:
                 continue
-            time_ms = round(frame / frame_rate * 1000)
+            # A feature represents the center of its overlapping analysis window. Using the
+            # block start here makes every generated tile visibly early by half a window.
+            time_ms = round((frame * HOP_SIZE + FRAME_SIZE / 2) / sample_rate * 1000)
             if time_ms > duration_ms:
                 continue
             strength = max(float(onset_envelope[frame]), fallback_strength * 0.7)
@@ -115,7 +123,13 @@ class StreamingFeatureExtractor:
                     time_ms=time_ms,
                     strength=strength,
                     low_frequency_bias=float(centroid_bias[frame]),
-                    sustain_ms=self._estimate_sustain_ms(rms, frame, frame_rate),
+                    sustain_ms=self._estimate_sustain_ms(
+                        rms,
+                        onset_envelope,
+                        frame,
+                        frame_rate,
+                        silence_floor,
+                    ),
                     is_beat=frame in beat_frames,
                 )
             )
@@ -151,15 +165,35 @@ class StreamingFeatureExtractor:
     def _stream_features(
         audio_path: Path,
         cancellation: CancellationToken,
-    ) -> tuple[int, int, NDArray[np.float64], NDArray[np.float64]]:
+    ) -> tuple[
+        int,
+        int,
+        NDArray[np.float64],
+        NDArray[np.float64],
+        NDArray[np.float64],
+    ]:
         rms_values: list[float] = []
         centroid_bias_values: list[float] = []
-        spectral_data: dict[int, tuple[NDArray[np.float64], NDArray[np.float64]]] = {}
+        spectral_flux_values: list[float] = []
+        window = np.asarray(np.hanning(FRAME_SIZE), dtype=np.float64)
+        frequencies: NDArray[np.float64] | None = None
+        frequency_weights: NDArray[np.float64] | None = None
+        previous_log_spectrum: NDArray[np.float64] | None = None
         with sf.SoundFile(audio_path) as audio:
             sample_rate = int(audio.samplerate)
             duration_ms = round(len(audio) / sample_rate * 1000)
+            frequencies = np.asarray(
+                np.fft.rfftfreq(FRAME_SIZE, d=1.0 / sample_rate),
+                dtype=np.float64,
+            )
+            frequency_weights = 0.65 + 0.35 * frequencies / (sample_rate / 2)
             for frame_index, block_value in enumerate(
-                audio.blocks(blocksize=FRAME_SIZE, dtype="float32", always_2d=True)
+                audio.blocks(
+                    blocksize=FRAME_SIZE,
+                    overlap=FRAME_SIZE - HOP_SIZE,
+                    dtype="float32",
+                    always_2d=True,
+                )
             ):
                 if frame_index % 128 == 0:
                     cancellation.raise_if_cancelled()
@@ -168,30 +202,52 @@ class StreamingFeatureExtractor:
                 if mono.size == 0:
                     continue
                 rms_values.append(float(np.sqrt(np.mean(np.square(mono)))))
-                if len(mono) in spectral_data:
-                    window, frequencies = spectral_data[len(mono)]
-                else:
-                    window = np.asarray(np.hanning(len(mono)), dtype=np.float64)
-                    frequencies = np.asarray(
-                        np.fft.rfftfreq(len(mono), d=1.0 / sample_rate),
-                        dtype=np.float64,
-                    )
-                    spectral_data[len(mono)] = (window, frequencies)
+                if mono.size < FRAME_SIZE:
+                    mono = np.pad(mono, (0, FRAME_SIZE - mono.size))
                 spectrum = np.abs(np.fft.rfft(mono * window))
                 magnitude = float(np.sum(spectrum))
                 if magnitude <= 1e-12:
                     centroid_bias_values.append(0.5)
                 else:
+                    assert frequencies is not None
                     centroid = float(np.sum(frequencies * spectrum) / magnitude)
                     centroid_bias_values.append(
                         float(np.clip(1.0 - centroid / (sample_rate / 2), 0, 1))
                     )
+                # Compare spectral shape, not raw loudness. Slow volume swells otherwise look
+                # like playable attacks even though no new instrument or articulation occurred.
+                normalized_spectrum = spectrum / max(magnitude, 1e-12)
+                log_spectrum = np.log1p(normalized_spectrum * 1000.0)
+                if previous_log_spectrum is None:
+                    spectral_flux_values.append(0.0)
+                else:
+                    assert frequency_weights is not None
+                    positive_change = np.maximum(0.0, log_spectrum - previous_log_spectrum)
+                    spectral_flux_values.append(float(np.mean(positive_change * frequency_weights)))
+                previous_log_spectrum = log_spectrum
         return (
             sample_rate,
             duration_ms,
             np.asarray(rms_values, dtype=np.float64),
             np.asarray(centroid_bias_values, dtype=np.float64),
+            np.asarray(spectral_flux_values, dtype=np.float64),
         )
+
+    @staticmethod
+    def _normalize_novelty(
+        values: NDArray[np.float64],
+        *,
+        relative_floor: float = 0.0,
+    ) -> NDArray[np.float64]:
+        floor = float(np.max(values)) * relative_floor if values.size else 0.0
+        filtered = np.where(values >= floor, values, 0.0)
+        positive = filtered[filtered > 0]
+        if positive.size == 0:
+            return np.zeros_like(values)
+        scale = float(np.percentile(positive, 90))
+        if scale <= 1e-12:
+            return np.zeros_like(values)
+        return np.clip(filtered / scale, 0.0, 4.0)
 
     @staticmethod
     def _estimate_beats(
@@ -251,17 +307,39 @@ class StreamingFeatureExtractor:
     @staticmethod
     def _estimate_sustain_ms(
         rms: NDArray[np.float64],
+        onset_envelope: NDArray[np.float64],
         frame: int,
         frame_rate: float,
+        silence_floor: float,
     ) -> int:
-        baseline = float(rms[frame])
+        local_end = min(len(rms), frame + max(2, round(frame_rate * 0.08)))
+        baseline = float(np.percentile(rms[frame:local_end], 75))
         if baseline <= 0:
             return 0
-        threshold = baseline * 0.58
+        threshold = max(silence_floor, baseline * 0.42)
+        positive_novelty = onset_envelope[onset_envelope > 0]
+        next_attack_threshold = (
+            max(
+                float(np.percentile(positive_novelty, 80)),
+                float(np.max(positive_novelty)) * 0.22,
+            )
+            if positive_novelty.size
+            else float("inf")
+        )
         end = frame
-        maximum_frames = round(frame_rate * 2.0)
+        maximum_frames = round(frame_rate * 2.4)
+        minimum_attack_gap = max(1, round(frame_rate * 0.20))
+        quiet_frames = 0
         while end + 1 < len(rms) and end - frame < maximum_frames:
-            if float(rms[end + 1]) < threshold:
+            next_frame = end + 1
+            if (
+                next_frame - frame >= minimum_attack_gap
+                and float(onset_envelope[next_frame]) >= next_attack_threshold
+            ):
                 break
-            end += 1
+            quiet_frames = quiet_frames + 1 if float(rms[next_frame]) < threshold else 0
+            if quiet_frames >= 2:
+                end = next_frame - quiet_frames + 1
+                break
+            end = next_frame
         return round((end - frame) / frame_rate * 1000)
