@@ -31,9 +31,20 @@ DIFFICULTY_ORDER: tuple[Difficulty, ...] = (
 ACTIVE_LANES: dict[Difficulty, tuple[int, ...]] = {
     Difficulty.EASY: (0, 1, 4, 5),
     Difficulty.MEDIUM: (0, 1, 3, 4, 5),
-    Difficulty.HARD: (0, 1, 3, 4, 5),
+    Difficulty.HARD: (0, 1, 2, 3, 4, 5),
     Difficulty.EXTREME: (0, 1, 2, 3, 4, 5),
 }
+LEGACY_HARD_ACTIVE_LANES = (0, 1, 3, 4, 5)
+
+
+def matches_active_lane_profile(
+    difficulty: Difficulty,
+    active_lanes: tuple[int, ...],
+) -> bool:
+    """Accept the current profile and the five-lane Hard profile emitted before 1.3."""
+    return active_lanes == ACTIVE_LANES[difficulty] or (
+        difficulty is Difficulty.HARD and active_lanes == LEGACY_HARD_ACTIVE_LANES
+    )
 
 
 class NoteType(StrEnum):
@@ -109,7 +120,7 @@ class Chart:
             _fail(ErrorCode.UNSUPPORTED_VERSION, "Unsupported chart major version")
         if self.lane_count != LANE_COUNT:
             _fail(ErrorCode.INVALID_CHART, "laneCount must be 6")
-        if self.active_lanes != ACTIVE_LANES[self.difficulty]:
+        if not matches_active_lane_profile(self.difficulty, self.active_lanes):
             _fail(ErrorCode.INVALID_CHART, "activeLanes do not match the difficulty profile")
         if len(self.notes) > MAX_NOTES_PER_CHART:
             _fail(ErrorCode.LIMIT_EXCEEDED, "Chart has too many notes")
@@ -233,7 +244,7 @@ class Manifest:
     required_features: tuple[str, ...] = ("holdNotes",)
     format_version: str = FORMAT_VERSION
 
-    SUPPORTED_FEATURES: ClassVar[frozenset[str]] = frozenset({"holdNotes"})
+    SUPPORTED_FEATURES: ClassVar[frozenset[str]] = frozenset({"holdNotes", "vp8Video"})
 
     def validate(self) -> None:
         if self.format_version.split(".", 1)[0] != "1":
@@ -247,6 +258,29 @@ class Manifest:
             _fail(ErrorCode.LIMIT_EXCEEDED, "Song duration must be between 1 ms and 30 minutes")
         if not 0.0 <= self.generation_confidence <= 1.0:
             _fail(ErrorCode.INVALID_MANIFEST, "generationConfidence must be within 0..1")
+        if (self.audio.path, self.audio.media_type) != ("audio/song.ogg", "audio/ogg"):
+            _fail(ErrorCode.INVALID_MANIFEST, "Audio descriptor is invalid")
+        declares_vp8 = "vp8Video" in self.required_features
+        if self.video is None:
+            if declares_vp8:
+                _fail(ErrorCode.INVALID_MANIFEST, "vp8Video requires WebM video media")
+        else:
+            video_kind = (self.video.path, self.video.media_type)
+            if video_kind not in {
+                ("video/background.mp4", "video/mp4"),
+                ("video/background.webm", "video/webm"),
+            }:
+                _fail(ErrorCode.INVALID_MANIFEST, "Video descriptor is invalid")
+            if declares_vp8 != (video_kind == ("video/background.webm", "video/webm")):
+                _fail(
+                    ErrorCode.INVALID_MANIFEST,
+                    "WebM video and vp8Video must be declared together",
+                )
+        if self.cover is not None and (self.cover.path, self.cover.media_type) != (
+            "cover/cover.jpg",
+            "image/jpeg",
+        ):
+            _fail(ErrorCode.INVALID_MANIFEST, "Cover descriptor is invalid")
         if tuple(item.difficulty for item in self.charts) != DIFFICULTY_ORDER:
             _fail(ErrorCode.INVALID_MANIFEST, "Exactly four ordered difficulties are required")
 

@@ -25,7 +25,11 @@ from .models import (
     ProgressUpdate,
     SourceKind,
 )
-from .output import available_package_destination, resolved_metadata
+from .output import (
+    PackageDestinationReservation,
+    reserve_available_package_destination,
+    resolved_metadata,
+)
 from .ports import FeatureExtractor, MediaProcessor, ProgressSink, PublicVideoDownloader
 
 LOGGER = logging.getLogger(__name__)
@@ -70,8 +74,6 @@ class CreatorService:
                 acquired.title,
                 acquired.artist,
             )
-            destination = self._destination(request, title, artist)
-
             info = self._media_processor.probe(acquired.path, token)
             self._validate_media(info.duration_ms, info.has_audio)
 
@@ -101,31 +103,36 @@ class CreatorService:
             token.raise_if_cancelled()
 
             self._report(progress, ProgressStage.PACKAGING, 0.90, "Writing package…")
+            destination, reservation = self._destination(request, title, artist)
             try:
-                package = assemble_package(
-                    destination=destination,
-                    title=title,
-                    artist=artist,
-                    duration_ms=analysis.duration_ms,
-                    charts=charts,
-                    audio_path=normalized.audio_path,
-                    video_path=normalized.video_path,
-                    cover_path=normalized.cover_path,
-                    generator_version=__version__,
-                    algorithm_version=ALGORITHM_VERSION,
-                    seed=request.seed,
-                    source_type=request.source_kind.value,
-                    source_id=acquired.source_id,
-                    generation_confidence=analysis.confidence,
-                    chart_offset_ms=request.chart_offset_ms,
-                    video_offset_ms=request.video_offset_ms,
-                )
-            except (ContractError, OSError) as error:
-                raise CreatorError(
-                    CreatorErrorCode.PACKAGE_FAILED,
-                    "The generated package could not be saved.",
-                    diagnostic=str(error),
-                ) from error
+                try:
+                    package = assemble_package(
+                        destination=destination,
+                        title=title,
+                        artist=artist,
+                        duration_ms=analysis.duration_ms,
+                        charts=charts,
+                        audio_path=normalized.audio_path,
+                        video_path=normalized.video_path,
+                        cover_path=normalized.cover_path,
+                        generator_version=__version__,
+                        algorithm_version=ALGORITHM_VERSION,
+                        seed=request.seed,
+                        source_type=request.source_kind.value,
+                        source_id=acquired.source_id,
+                        generation_confidence=analysis.confidence,
+                        chart_offset_ms=request.chart_offset_ms,
+                        video_offset_ms=request.video_offset_ms,
+                    )
+                except (ContractError, OSError) as error:
+                    raise CreatorError(
+                        CreatorErrorCode.PACKAGE_FAILED,
+                        "The generated package could not be saved.",
+                        diagnostic=str(error),
+                    ) from error
+            finally:
+                if reservation is not None:
+                    reservation.release()
 
         self._report(progress, ProgressStage.COMPLETE, 1.0, "Package created.")
         LOGGER.info(
@@ -146,20 +153,30 @@ class CreatorService:
         )
 
     @staticmethod
-    def _destination(request: CreateLevelRequest, title: str, artist: str) -> Path:
+    def _destination(
+        request: CreateLevelRequest,
+        title: str,
+        artist: str,
+    ) -> tuple[Path, PackageDestinationReservation | None]:
         if request.destination is not None:
             destination = request.destination.expanduser().resolve()
-            return (
+            normalized = (
                 destination
                 if destination.suffix.casefold() == ".keywave"
                 else destination.with_suffix(".keywave")
             )
+            return normalized, None
         if request.output_directory is None:
             raise CreatorError(
                 CreatorErrorCode.PACKAGE_FAILED,
                 "Choose an output folder before creating the level.",
             )
-        return available_package_destination(request.output_directory, title, artist)
+        reservation = reserve_available_package_destination(
+            request.output_directory,
+            title,
+            artist,
+        )
+        return reservation.destination, reservation
 
     def _acquire(
         self,

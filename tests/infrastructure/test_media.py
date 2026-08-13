@@ -94,9 +94,11 @@ def test_normalize_builds_ogg_video_and_optional_cover(tmp_path: Path) -> None:
 
     assert normalized.audio_path.read_bytes() == b"normalized"
     assert normalized.video_path is not None and normalized.video_path.is_file()
+    assert normalized.video_path.suffix == ".webm"
     assert normalized.cover_path is not None and normalized.cover_path.is_file()
     assert any("libvorbis" in command for command in runner.commands)
-    assert any("libx264" in command for command in runner.commands)
+    assert any("libvpx" in command for command in runner.commands)
+    assert not any("libx264" in command for command in runner.commands)
 
 
 def test_cover_failure_does_not_discard_playable_audio(tmp_path: Path) -> None:

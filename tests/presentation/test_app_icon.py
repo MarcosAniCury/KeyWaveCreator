@@ -75,7 +75,7 @@ def test_gui_assigns_the_packaged_icon_before_loading_qml(
             return [object()]
 
     class FakeController:
-        def __init__(self, service_factory: object) -> None:
+        def __init__(self, service_factory: object, **_kwargs: object) -> None:
             self.service_factory = service_factory
 
         def shutdown(self) -> None:

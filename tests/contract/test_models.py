@@ -7,6 +7,8 @@ from keywave_creator.contract.models import (
     ACTIVE_LANES,
     Chart,
     Difficulty,
+    FileDescriptor,
+    Manifest,
     Note,
     NoteType,
     validate_nested_charts,
@@ -47,8 +49,19 @@ def make_charts() -> tuple[Chart, ...]:
 def test_selected_lane_profiles_are_contractual() -> None:
     assert ACTIVE_LANES[Difficulty.EASY] == (0, 1, 4, 5)
     assert ACTIVE_LANES[Difficulty.MEDIUM] == (0, 1, 3, 4, 5)
-    assert ACTIVE_LANES[Difficulty.HARD] == (0, 1, 3, 4, 5)
+    assert ACTIVE_LANES[Difficulty.HARD] == (0, 1, 2, 3, 4, 5)
     assert ACTIVE_LANES[Difficulty.EXTREME] == (0, 1, 2, 3, 4, 5)
+
+
+def test_legacy_five_lane_hard_chart_remains_readable() -> None:
+    chart = Chart(
+        chart_id="legacy-hard",
+        difficulty=Difficulty.HARD,
+        active_lanes=(0, 1, 3, 4, 5),
+        notes=(Note(id="legacy-note", time_ms=500, lane=3),),
+    )
+
+    chart.validate(duration_ms=5_000)
 
 
 def test_valid_nested_charts_round_trip() -> None:
@@ -76,3 +89,23 @@ def test_lower_difficulty_note_cannot_change() -> None:
     with pytest.raises(ContractError) as raised:
         validate_nested_charts((easy, changed, hard, extreme))
     assert raised.value.issue.code is ErrorCode.INVALID_CHART
+
+
+def test_webm_video_requires_declared_vp8_feature() -> None:
+    manifest = Manifest(
+        package_id="package-test",
+        title="Synthetic Song",
+        artist="KeyWave Tests",
+        duration_ms=5_000,
+        generator_version="0.1.0",
+        algorithm_version="1.0.0",
+        seed="12345",
+        audio=FileDescriptor("audio/song.ogg", 1, "0" * 64, "audio/ogg"),
+        video=FileDescriptor("video/background.webm", 1, "1" * 64, "video/webm"),
+        charts=tuple(),
+    )
+
+    with pytest.raises(ContractError) as raised:
+        manifest.validate()
+
+    assert raised.value.issue.code is ErrorCode.INVALID_MANIFEST

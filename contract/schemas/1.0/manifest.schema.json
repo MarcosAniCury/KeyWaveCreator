@@ -63,7 +63,7 @@
       "required": ["audio"],
       "properties": {
         "audio": { "$ref": "#/$defs/file" },
-        "video": { "$ref": "#/$defs/file" },
+        "video": { "$ref": "#/$defs/video" },
         "cover": { "$ref": "#/$defs/file" }
       }
     },
@@ -85,6 +85,27 @@
         "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "mediaType": { "type": "string", "minLength": 1 }
       }
+    },
+    "video": {
+      "allOf": [
+        { "$ref": "#/$defs/file" },
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "path": { "const": "video/background.mp4" },
+                "mediaType": { "const": "video/mp4" }
+              }
+            },
+            {
+              "properties": {
+                "path": { "const": "video/background.webm" },
+                "mediaType": { "const": "video/webm" }
+              }
+            }
+          ]
+        }
+      ]
     },
     "chart": {
       "type": "object",

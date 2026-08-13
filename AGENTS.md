@@ -129,10 +129,12 @@ for the capability it owns. Keep `__init__.py` exports intentional and small.
 - Normalize through FFmpeg to the one documented internal representation. Make
   encoding flags explicit and deterministic where the tool permits; surface
   unsupported codecs and corrupt media as stable application errors.
-- yt-dlp handles only the authorized public-single-video flow. The bundled
-  version is pinned, has no self-updater, does not import cookies or credentials,
-  and uses bounded format selection. Store neither the source URL query string
-  nor downloader secrets in normal logs or the package.
+- yt-dlp handles only bounded public YouTube discovery and the authorized
+  single-video acquisition step. The bundled version is pinned, has no
+  self-updater, does not import cookies or credentials, and uses bounded format
+  selection. Spotify supplies catalog metadata only; its media is never
+  downloaded. Store neither source URL query strings nor downloader or OAuth
+  secrets in normal logs or the package.
 - Network operations have connect/read timeouts, cancellation, bounded retries
   only for transient idempotent failures, and no infinite retry. Never bypass
   TLS validation.
@@ -227,4 +229,3 @@ randomness, unordered output, `shell=True`, unsafe archive extraction, unbounded
 media/process reads, non-atomic publication, broad exception swallowing,
 internet-dependent tests, or a production dependency without distribution and
 license treatment.
-

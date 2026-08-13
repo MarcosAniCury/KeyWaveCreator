@@ -62,7 +62,14 @@ def run_gui() -> int:
         raise
 
     engine = QQmlApplicationEngine()
-    controller = CreatorController(_create_service)
+    from keywave_creator.infrastructure.bootstrap import create_default_source_expander
+    from keywave_creator.infrastructure.spotify import SpotifyPkceSession
+
+    spotify_session = SpotifyPkceSession()
+    controller = CreatorController(
+        _create_service,
+        source_expander_factory=lambda: create_default_source_expander(spotify_session),
+    )
     engine.rootContext().setContextProperty("creatorController", controller)
     application.aboutToQuit.connect(controller.shutdown)
     qml_resource = files("keywave_creator.presentation").joinpath("qml", "Main.qml")

@@ -30,3 +30,30 @@ def test_pipeline_steps_have_distinct_active_and_completed_visual_states() -> No
     assert "stepIndex: modelData.index" in qml
     for color in ("#39E6D0", "#8C6CFF", "#FF5BC8", "#FFC857"):
         assert color in qml
+
+
+def test_creator_exposes_a_non_blocking_bounded_queue() -> None:
+    qml = (
+        files("keywave_creator.presentation")
+        .joinpath("qml", "Main.qml")
+        .read_text(encoding="utf-8")
+    )
+
+    assert "creatorController.enqueueSource" in qml
+    assert "model: creatorController.queueModel" in qml
+    assert "Add source to queue" in qml
+    assert "Up to two levels are generated at once" in qml
+    assert "enabled: !creatorController.isRunning" not in qml
+
+
+def test_creator_explains_spotify_metadata_to_youtube_playlist_flow() -> None:
+    qml = (
+        files("keywave_creator.presentation")
+        .joinpath("qml", "Main.qml")
+        .read_text(encoding="utf-8")
+    )
+
+    assert "YouTube video or playlist, or a Spotify playlist" in qml
+    assert "Spotify identifies tracks; YouTube provides" in qml
+    assert "creatorController.spotifyClientId" in qml
+    assert "http://127.0.0.1:9657/callback" in qml

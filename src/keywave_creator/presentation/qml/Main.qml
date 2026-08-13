@@ -239,6 +239,119 @@ ApplicationWindow {
         }
     }
 
+    component QueueJobRow: Rectangle {
+        id: queueJob
+
+        required property string jobId
+        required property string label
+        required property string jobState
+        required property real progress
+        required property string message
+        required property string resultPath
+        required property string errorText
+        readonly property bool terminal: jobState === "completed"
+                                                || jobState === "failed"
+                                                || jobState === "cancelled"
+        readonly property color stateColor: jobState === "completed"
+                                                ? window.success
+                                                : jobState === "failed"
+                                                  ? window.danger
+                                                  : jobState === "cancelled"
+                                                    ? window.mutedInk
+                                                    : jobState === "expanding"
+                                                      ? "#8C6CFF"
+                                                    : window.currentPipelineColor
+
+        width: ListView.view ? ListView.view.width : 0
+        height: window.compactHeight ? 52 : 58
+        radius: 14
+        color: "#0B111B"
+        border.width: 1
+        border.color: jobState === "running" || jobState === "expanding"
+                      ? stateColor
+                      : "#252D3C"
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 14
+            anchors.rightMargin: 8
+            spacing: 11
+
+            Rectangle {
+                width: 9
+                height: 9
+                radius: 5
+                color: queueJob.stateColor
+
+                SequentialAnimation on opacity {
+                    running: queueJob.jobState === "running"
+                             || queueJob.jobState === "expanding"
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 0.35; duration: 600 }
+                    NumberAnimation { to: 1.0; duration: 600 }
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 2
+
+                AppLabel {
+                    Layout.fillWidth: true
+                    text: queueJob.label
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                    elide: Text.ElideRight
+                }
+
+                AppLabel {
+                    Layout.fillWidth: true
+                    text: queueJob.errorText.length > 0
+                          ? queueJob.errorText
+                          : queueJob.message
+                    color: queueJob.errorText.length > 0
+                           ? "#DCA9B5"
+                           : window.mutedInk
+                    font.pixelSize: 10
+                    elide: Text.ElideRight
+                }
+            }
+
+            AppLabel {
+                visible: queueJob.jobState === "running"
+                         || queueJob.jobState === "expanding"
+                         || queueJob.jobState === "cancelling"
+                text: Math.round(queueJob.progress * 100) + "%"
+                color: queueJob.stateColor
+                font.pixelSize: 11
+                font.weight: Font.Bold
+            }
+
+            AppButton {
+                implicitWidth: queueJob.jobState === "completed"
+                               && queueJob.resultPath.length > 0 ? 66 : 74
+                implicitHeight: 38
+                subtle: true
+                enabled: queueJob.jobState !== "cancelling"
+                text: queueJob.jobState === "completed"
+                      && queueJob.resultPath.length > 0
+                      ? "Open"
+                      : queueJob.terminal
+                        ? "Remove"
+                        : "Cancel"
+                onClicked: {
+                    if (queueJob.jobState === "completed"
+                            && queueJob.resultPath.length > 0)
+                        creatorController.openJobResult(queueJob.jobId)
+                    else if (queueJob.terminal)
+                        creatorController.removeJob(queueJob.jobId)
+                    else
+                        creatorController.cancelJob(queueJob.jobId)
+                }
+            }
+        }
+    }
+
     background: Item {
         Rectangle {
             anchors.fill: parent
@@ -412,7 +525,7 @@ ApplicationWindow {
                 AppLabel {
                     Layout.fillWidth: true
                     Layout.topMargin: 4
-                    text: "Paste a YouTube link. KeyWave handles the title, artist, rhythm maps, video, and filename."
+                    text: "Paste a YouTube video or playlist, or a Spotify playlist. KeyWave resolves every track and builds the levels for you."
                     color: window.secondaryInk
                     font.pixelSize: 16
                     horizontalAlignment: Text.AlignHCenter
@@ -441,7 +554,7 @@ ApplicationWindow {
                     spacing: window.compactHeight ? 9 : 11
 
                     AppLabel {
-                        text: "YouTube video URL"
+                        text: "Video or playlist URL"
                         font.pixelSize: 13
                         font.weight: Font.DemiBold
                     }
@@ -484,20 +597,26 @@ ApplicationWindow {
 
                                 Layout.fillWidth: true
                                 implicitHeight: 54
-                                enabled: !creatorController.isRunning
                                 color: window.ink
-                                placeholderText: "https://www.youtube.com/watch?v=…"
+                                placeholderText: "YouTube video / playlist or open.spotify.com/playlist/..."
                                 placeholderTextColor: window.mutedInk
                                 selectionColor: window.accentStrong
                                 selectedTextColor: "#03100E"
                                 font.family: window.uiFont
                                 font.pixelSize: 15
                                 background: Item { }
-                                Accessible.name: "YouTube video URL"
+                                Accessible.name: "YouTube video or playlist, or Spotify playlist URL"
 
                                 onAccepted: {
-                                    if (!creatorController.isRunning && text.trim().length > 0)
-                                        creatorController.startCreation(text)
+                                    if (text.trim().length > 0) {
+                                        if (text.toLowerCase().indexOf("spotify.com") >= 0
+                                                && !creatorController.spotifyConfigured) {
+                                            spotifyClientIdField.forceActiveFocus()
+                                            return
+                                        }
+                                        creatorController.enqueueSource(text)
+                                        text = ""
+                                    }
                                 }
                             }
 
@@ -505,7 +624,6 @@ ApplicationWindow {
                                 text: "Paste"
                                 subtle: true
                                 implicitWidth: 70
-                                enabled: !creatorController.isRunning
                                 onClicked: {
                                     urlField.forceActiveFocus()
                                     urlField.selectAll()
@@ -517,69 +635,185 @@ ApplicationWindow {
 
                     AppLabel {
                         Layout.fillWidth: true
-                        text: "Public, single-video links only. Playlist context in a shared link is ignored."
+                        text: "Playlists expand automatically. Up to two levels are generated at once. Spotify identifies tracks; YouTube provides the matched public video."
                         color: window.mutedInk
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: spotifySetup.implicitHeight + 24
+                        visible: urlField.text.toLowerCase().indexOf("spotify.com") >= 0
+                        radius: 14
+                        color: "#0B131B"
+                        border.width: 1
+                        border.color: spotifyClientIdField.activeFocus
+                                      ? window.accent
+                                      : "#253340"
+
+                        ColumnLayout {
+                            id: spotifySetup
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            spacing: 7
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 10
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+
+                                    AppLabel {
+                                        text: "Spotify developer Client ID"
+                                        font.pixelSize: 12
+                                        font.weight: Font.DemiBold
+                                    }
+                                    AppLabel {
+                                        Layout.fillWidth: true
+                                        text: "Stored on this PC. Register http://127.0.0.1:9657/callback as the redirect URI; Spotify sign-in opens when queued."
+                                        color: window.mutedInk
+                                        font.pixelSize: 10
+                                        wrapMode: Text.WordWrap
+                                    }
+                                }
+
+                                AppLabel {
+                                    visible: creatorController.spotifyConfigured
+                                    text: "READY"
+                                    color: window.success
+                                    font.pixelSize: 10
+                                    font.weight: Font.Bold
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 9
+
+                                TextField {
+                                    id: spotifyClientIdField
+
+                                    Layout.fillWidth: true
+                                    implicitHeight: 42
+                                    text: creatorController.spotifyClientId
+                                    color: window.ink
+                                    placeholderText: "Spotify Client ID"
+                                    placeholderTextColor: window.mutedInk
+                                    selectionColor: window.accentStrong
+                                    selectedTextColor: "#03100E"
+                                    font.family: window.uiFont
+                                    font.pixelSize: 13
+                                    background: Rectangle {
+                                        radius: 10
+                                        color: "#080D15"
+                                        border.width: 1
+                                        border.color: spotifyClientIdField.activeFocus
+                                                      ? window.accent
+                                                      : window.border
+                                    }
+                                    Accessible.name: "Spotify developer Client ID"
+                                    onEditingFinished: creatorController.setSpotifyClientId(text)
+                                }
+
+                                AppButton {
+                                    text: "Save"
+                                    subtle: true
+                                    implicitWidth: 66
+                                    enabled: spotifyClientIdField.text.trim().length > 0
+                                    onClicked: {
+                                        creatorController.setSpotifyClientId(spotifyClientIdField.text)
+                                        urlField.forceActiveFocus()
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     AppButton {
                         Layout.fillWidth: true
                         Layout.topMargin: 6
                         implicitHeight: window.compactHeight ? 50 : 54
-                        visible: !creatorController.isRunning
                         primary: true
-                        text: "Create playable level"
+                        text: creatorController.hasUnfinishedJobs
+                              ? "Add another source to queue"
+                              : "Add source to queue"
                         enabled: urlField.text.trim().length > 0
-                        onClicked: creatorController.startCreation(urlField.text)
+                                 && (urlField.text.toLowerCase().indexOf("spotify.com") < 0
+                                     || creatorController.spotifyConfigured
+                                     || spotifyClientIdField.text.trim().length > 0)
+                        onClicked: {
+                            if (urlField.text.toLowerCase().indexOf("spotify.com") >= 0) {
+                                if (spotifyClientIdField.text.trim().length === 0) {
+                                    spotifyClientIdField.forceActiveFocus()
+                                    return
+                                }
+                                creatorController.setSpotifyClientId(spotifyClientIdField.text)
+                            }
+                            creatorController.enqueueSource(urlField.text)
+                            urlField.clear()
+                            urlField.forceActiveFocus()
+                        }
                     }
 
                     Rectangle {
                         Layout.fillWidth: true
-                        implicitHeight: window.compactHeight ? 52 : 56
-                        visible: creatorController.isRunning
+                        implicitHeight: queueColumn.implicitHeight + 22
+                        visible: creatorController.queueCount > 0
                         radius: 15
-                        color: "#13201F"
+                        color: "#0D131D"
                         border.width: 1
-                        border.color: "#284A45"
+                        border.color: "#252D3C"
 
-                        RowLayout {
+                        ColumnLayout {
+                            id: queueColumn
                             anchors.fill: parent
-                            anchors.leftMargin: 18
-                            anchors.rightMargin: 10
-                            spacing: 12
+                            anchors.margins: 11
+                            spacing: 7
 
-                            Rectangle {
-                                width: 9
-                                height: 9
-                                radius: 5
-                                color: window.accent
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 10
 
-                                SequentialAnimation on opacity {
-                                    loops: Animation.Infinite
-                                    NumberAnimation { to: 0.25; duration: 650 }
-                                    NumberAnimation { to: 1.0; duration: 650 }
+                                AppLabel {
+                                    text: "PROCESSING QUEUE"
+                                    color: window.secondaryInk
+                                    font.pixelSize: 10
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 1.2
+                                }
+
+                                AppLabel {
+                                    text: creatorController.activeCount + " active  -  "
+                                          + creatorController.pendingCount + " waiting"
+                                    color: window.mutedInk
+                                    font.pixelSize: 10
+                                }
+
+                                Item { Layout.fillWidth: true }
+
+                                AppButton {
+                                    visible: creatorController.completedCount > 0
+                                    text: "Clear finished"
+                                    subtle: true
+                                    implicitWidth: 106
+                                    implicitHeight: 32
+                                    onClicked: creatorController.clearFinished()
                                 }
                             }
 
-                            AppLabel {
-                                text: creatorController.status
-                                font.weight: Font.DemiBold
-                            }
-
-                            Item { Layout.fillWidth: true }
-
-                            AppLabel {
-                                text: Math.round(creatorController.progress * 100) + "%"
-                                color: window.accent
-                                font.weight: Font.DemiBold
-                            }
-
-                            AppButton {
-                                text: "Cancel"
-                                subtle: true
-                                implicitWidth: 76
-                                onClicked: creatorController.cancelCreation()
+                            ListView {
+                                id: queueList
+                                Layout.fillWidth: true
+                                implicitHeight: Math.min(contentHeight,
+                                                         window.compactHeight ? 108 : 124)
+                                clip: true
+                                spacing: 6
+                                model: creatorController.queueModel
+                                boundsBehavior: Flickable.StopAtBounds
+                                delegate: QueueJobRow { }
                             }
                         }
                     }
@@ -672,13 +906,13 @@ ApplicationWindow {
                     AppButton {
                         text: "Open"
                         subtle: true
-                        enabled: !creatorController.isRunning
+                        enabled: !creatorController.hasUnfinishedJobs
                         onClicked: creatorController.openOutputDirectory()
                     }
 
                     AppButton {
                         text: "Change folder"
-                        enabled: !creatorController.isRunning
+                        enabled: !creatorController.hasUnfinishedJobs
                         onClicked: folderDialog.open()
                     }
                 }

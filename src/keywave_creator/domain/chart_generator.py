@@ -18,7 +18,7 @@ from keywave_creator.contract.models import (
 
 from .analysis import AnalysisResult, FeaturePoint
 
-ALGORITHM_VERSION = "1.2.1"
+ALGORITHM_VERSION = "1.3.0"
 HOLD_RELEASE_GAP_MS = 90
 MAX_HOLD_DURATION_MS = 2_000
 LANE_MEMORY_SIZE = 12

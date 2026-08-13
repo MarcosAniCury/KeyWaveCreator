@@ -139,7 +139,7 @@ class FFmpegMediaProcessor:
         cover_path: Path | None = None
         if info.has_video:
             if include_video:
-                video_path = working_directory / "background.mp4"
+                video_path = working_directory / "background.webm"
                 self._runner.run(
                     (
                         self._ffmpeg,
@@ -159,13 +159,15 @@ class FFmpegMediaProcessor:
                             "force_original_aspect_ratio=decrease,fps=30,format=yuv420p"
                         ),
                         "-c:v",
-                        "libx264",
-                        "-preset",
-                        "medium",
+                        "libvpx",
+                        "-deadline",
+                        "good",
+                        "-cpu-used",
+                        "2",
                         "-crf",
-                        "22",
-                        "-movflags",
-                        "+faststart",
+                        "24",
+                        "-b:v",
+                        "0",
                         "-map_metadata",
                         "-1",
                         video_path,

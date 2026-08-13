@@ -15,6 +15,14 @@ class SourceKind(StrEnum):
     YOUTUBE = "youtube"
 
 
+class InputSourceKind(StrEnum):
+    """Kinds accepted by the Creator's URL queue before media acquisition."""
+
+    YOUTUBE_VIDEO = "youtube_video"
+    YOUTUBE_PLAYLIST = "youtube_playlist"
+    SPOTIFY_PLAYLIST = "spotify_playlist"
+
+
 class ProgressStage(StrEnum):
     VALIDATING = "validating"
     ACQUIRING = "acquiring"
@@ -103,6 +111,41 @@ class AcquiredMedia:
     source_id: str | None = None
     title: str | None = None
     artist: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PlaylistTrack:
+    """One catalog track used only to locate an authorized public video."""
+
+    title: str
+    artist: str
+    duration_ms: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedPublicVideo:
+    """One canonical YouTube video ready for the normal Creator pipeline."""
+
+    url: str
+    label: str
+
+
+@dataclass(frozen=True, slots=True)
+class SourceExpansionProgress:
+    """Bounded progress for resolving one playlist into public videos."""
+
+    completed_items: int
+    total_items: int
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class SourceExpansionResult:
+    """Summary of a playlist expansion operation."""
+
+    total_items: int
+    resolved_items: int
+    skipped_items: int
 
 
 @dataclass(frozen=True, slots=True)

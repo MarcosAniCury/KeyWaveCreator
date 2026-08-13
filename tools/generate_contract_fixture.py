@@ -2,16 +2,24 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import tempfile
 import uuid
+import zipfile
 from pathlib import Path
 
 from keywave_creator.contract.models import Chart, Difficulty, Note, NoteType
-from keywave_creator.contract.package import assemble_package
+from keywave_creator.contract.package import assemble_package, canonical_json
 
 ROOT = Path(__file__).resolve().parents[1]
 DESTINATION = ROOT / "contract" / "fixtures" / "1.0" / "valid" / "synthetic.keywave"
+LEGACY_DESTINATION = (
+    ROOT / "contract" / "fixtures" / "1.0" / "valid" / "synthetic-mp4-legacy.keywave"
+)
+INVALID_DESTINATION = (
+    ROOT / "contract" / "fixtures" / "1.0" / "invalid" / "webm-without-vp8-feature.keywave"
+)
 
 
 def run_ffmpeg(*arguments: str) -> None:
@@ -46,6 +54,7 @@ def charts() -> tuple[Chart, ...]:
             (
                 Note(id=note_id(4), time_ms=2_500, lane=1),
                 Note(id=note_id(5), time_ms=2_500, lane=5),
+                Note(id=note_id(7), time_ms=2_500, lane=2),
             ),
         ),
         (Difficulty.EXTREME, (Note(id=note_id(6), time_ms=3_500, lane=2),)),
@@ -66,12 +75,30 @@ def charts() -> tuple[Chart, ...]:
     return tuple(result)
 
 
+def write_invalid_webm_fixture(source: Path, destination: Path) -> None:
+    """Create a deterministic semantic-invalid fixture from the valid WebM package."""
+    with zipfile.ZipFile(source, "r") as archive:
+        members = {item.filename: archive.read(item) for item in archive.infolist()}
+    manifest = json.loads(members["manifest.json"])
+    manifest["requiredFeatures"].remove("vp8Video")
+    members["manifest.json"] = canonical_json(manifest)
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(destination, "w", allowZip64=False) as archive:
+        for name, payload in sorted(members.items()):
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_STORED
+            info.external_attr = (0o100644 & 0xFFFF) << 16
+            archive.writestr(info, payload)
+
+
 def main() -> None:
     DESTINATION.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="keywave-fixture-") as temporary:
         temp = Path(temporary)
         audio = temp / "song.ogg"
-        video = temp / "background.mp4"
+        video = temp / "background.webm"
+        legacy_video = temp / "background.mp4"
         run_ffmpeg(
             "-f",
             "lavfi",
@@ -90,6 +117,26 @@ def main() -> None:
             "color=c=0x07111F:s=320x180:r=30:d=5",
             "-an",
             "-c:v",
+            "libvpx",
+            "-pix_fmt",
+            "yuv420p",
+            "-deadline",
+            "good",
+            "-cpu-used",
+            "2",
+            "-crf",
+            "24",
+            "-b:v",
+            "0",
+            str(video),
+        )
+        run_ffmpeg(
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=0x07111F:s=320x180:r=30:d=5",
+            "-an",
+            "-c:v",
             "libx264",
             "-pix_fmt",
             "yuv420p",
@@ -99,7 +146,7 @@ def main() -> None:
             "4.1",
             "-movflags",
             "+faststart",
-            str(video),
+            str(legacy_video),
         )
         assemble_package(
             destination=DESTINATION,
@@ -111,10 +158,25 @@ def main() -> None:
             video_path=video,
             cover_path=None,
             generator_version="0.1.0",
-            algorithm_version="fixture-1",
+            algorithm_version="fixture-2",
             seed="fixture",
             generation_confidence=1.0,
         )
+        assemble_package(
+            destination=LEGACY_DESTINATION,
+            title="Synthetic Pulse",
+            artist="KeyWave Tests",
+            duration_ms=5_000,
+            charts=charts(),
+            audio_path=audio,
+            video_path=legacy_video,
+            cover_path=None,
+            generator_version="0.1.0",
+            algorithm_version="fixture-legacy-mp4",
+            seed="fixture",
+            generation_confidence=1.0,
+        )
+        write_invalid_webm_fixture(DESTINATION, INVALID_DESTINATION)
 
 
 if __name__ == "__main__":

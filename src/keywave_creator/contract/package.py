@@ -360,16 +360,30 @@ def assemble_package(
                 active_lanes=chart.active_lanes,
             )
         )
-    video = (
-        FileDescriptor(
-            path="video/background.mp4",
+    video: FileDescriptor | None = None
+    required_features: tuple[str, ...] = ("holdNotes",)
+    if video_path is not None:
+        video_formats = {
+            ".mp4": ("video/background.mp4", "video/mp4"),
+            ".webm": ("video/background.webm", "video/webm"),
+        }
+        try:
+            package_path, media_type = video_formats[video_path.suffix.lower()]
+        except KeyError:
+            raise ContractError(
+                ValidationIssue(
+                    ErrorCode.UNSUPPORTED_MEDIA,
+                    "Package video must be MP4 or WebM",
+                )
+            ) from None
+        video = FileDescriptor(
+            path=package_path,
             size_bytes=video_path.stat().st_size,
             sha256=sha256_file(video_path),
-            media_type="video/mp4",
+            media_type=media_type,
         )
-        if video_path
-        else None
-    )
+        if media_type == "video/webm":
+            required_features = ("holdNotes", "vp8Video")
     cover = (
         FileDescriptor(
             path="cover/cover.jpg",
@@ -421,6 +435,7 @@ def assemble_package(
         video=video,
         cover=cover,
         charts=tuple(chart_descriptors),
+        required_features=required_features,
     )
     PackageWriter().write(
         destination=destination,
