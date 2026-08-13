@@ -1,16 +1,23 @@
 # KeyWave Creator
 
+KeyWave Creator is the independently built companion for the
+[KeyWave game](https://github.com/MarcosAniCury/KeyWave). The game never imports
+this repository or bundles its Python runtime. Their durable boundary is the
+versioned `.keywave` package plus the optional `game-create` process protocol.
+
 The Creator reads authorized local media or queues authorized public YouTube
 videos and playlists. A Spotify playlist can identify its tracks, which KeyWave
 then conservatively matches to public YouTube music videos before using the same
 normalization and generation pipeline. Spotify audio is never downloaded.
 
-The package contract under `contract/` is canonical for both Python and Unity.
+The package contract under `contract/` is the canonical writer specification.
+Consumer implementations, including the game, maintain defensive readers and
+interop fixtures against released contract versions.
 
 Run the GUI:
 
 ```powershell
-.venv\Scripts\keywave-creator.exe gui
+.\.venv\Scripts\keywave-creator.exe gui
 ```
 
 The graphical flow accepts public YouTube video/playlist URLs and Spotify
@@ -37,7 +44,7 @@ penalized unless that modifier is part of the Spotify title.
 Create from a local file:
 
 ```powershell
-.venv\Scripts\keywave-creator.exe create `
+.\.venv\Scripts\keywave-creator.exe create `
   --local C:\Music\authorized.mp4 `
   --title "Example" `
   --artist "Artist" `
@@ -47,10 +54,24 @@ Create from a local file:
 Validate a package:
 
 ```powershell
-.venv\Scripts\keywave-creator.exe validate C:\Music\example.keywave
+.\.venv\Scripts\keywave-creator.exe validate C:\Music\example.keywave
 ```
 
 Generation is deterministic for the same normalized media, metadata, offsets,
 algorithm version, and seed. FFmpeg/ffprobe are process-isolated with bounded
 diagnostics; yt-dlp runs with updates, user config, cookies, and access bypass
 disabled. Playlist discovery is bounded and never turns on credential import.
+
+## Quality and builds
+
+```powershell
+.\.venv\Scripts\python.exe -m ruff format --check .
+.\.venv\Scripts\python.exe -m ruff check .
+.\.venv\Scripts\python.exe -m mypy
+.\.venv\Scripts\python.exe -m pytest
+.\build\build.ps1 -Configuration Release
+```
+
+The release command creates the standalone Windows Creator and its installer.
+Linux packaging is available through `build/build_creator_linux.sh` on a Linux
+host with Python 3.12, GCC, patchelf, curl, and tar.

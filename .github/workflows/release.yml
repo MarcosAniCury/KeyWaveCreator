@@ -1,0 +1,31 @@
+name: Windows release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: [self-hosted, Windows, X64, keywave-release]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - name: Create Python environment
+        shell: powershell
+        run: |
+          py -3.12 -m venv .venv
+          .venv/Scripts/python.exe -m pip install -e ".[dev,build]"
+      - name: Build and test
+        shell: powershell
+        run: ./build/build.ps1 -Configuration Release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: keywave-creator-windows-x64
+          path: artifacts/installer/*.exe
+          if-no-files-found: error

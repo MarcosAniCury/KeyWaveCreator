@@ -1,0 +1,29 @@
+# Python generated state
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.codex-test-tmp/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+dist/
+site/
+nuitka-crash-report.xml
+.coverage
+coverage.xml
+
+# KeyWave local/generated state
+artifacts/
+packages/
+*.partial
+*.keywave.tmp
+
+# OS and editors
+.vs/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini

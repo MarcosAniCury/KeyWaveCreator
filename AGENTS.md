@@ -1,9 +1,9 @@
-# KeyWave Creator Python Guide
+# KeyWave Creator Agent Guide
 
 ## Scope
 
-This file applies to `python/` and extends the repository guide. The supported
-runtime is CPython 3.12 on Windows x64. `pyproject.toml` is the single source of
+This file governs the complete KeyWave Creator repository. The supported
+runtime is CPython 3.12 on Windows x64 and Linux x64. `pyproject.toml` is the single source of
 truth for build metadata, dependencies, pytest, Ruff, and mypy configuration.
 Use the checked-in virtual environment only as local state; never commit it.
 
@@ -204,7 +204,7 @@ for the capability it owns. Keep `__init__.py` exports intentional and small.
 
 ## Required commands
 
-Run from `python/` with the project virtual environment:
+Run from the repository root with the project virtual environment:
 
 ```powershell
 .\.venv\Scripts\python.exe -m ruff format --check .
