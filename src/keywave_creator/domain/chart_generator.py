@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import uuid
 from collections import deque
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
+from itertools import pairwise
 
 from keywave_creator.contract.models import (
     ACTIVE_LANES,
@@ -18,7 +20,7 @@ from keywave_creator.contract.models import (
 
 from .analysis import AnalysisResult, FeaturePoint
 
-ALGORITHM_VERSION = "1.3.0"
+ALGORITHM_VERSION = "creator-autosync-2.0.0"
 HOLD_RELEASE_GAP_MS = 90
 MAX_HOLD_DURATION_MS = 2_000
 LANE_MEMORY_SIZE = 12
@@ -41,11 +43,26 @@ class _TierRule:
     strength_quantile: float
 
 
+@dataclass(frozen=True, slots=True)
+class _CandidateProfile:
+    name: str
+    base_weight: float
+    percussive_weight: float
+    melodic_weight: float
+
+
 _RULES: tuple[_TierRule, ...] = (
     _TierRule(minimum_spacing_ms=520, strength_quantile=0.58),
     _TierRule(minimum_spacing_ms=330, strength_quantile=0.40),
     _TierRule(minimum_spacing_ms=190, strength_quantile=0.20),
     _TierRule(minimum_spacing_ms=90, strength_quantile=0.00),
+)
+
+_CANDIDATE_PROFILES: tuple[_CandidateProfile, ...] = (
+    _CandidateProfile("balanced", 0.55, 0.25, 0.20),
+    _CandidateProfile("percussive", 0.30, 0.65, 0.05),
+    _CandidateProfile("melodic", 0.35, 0.10, 0.55),
+    _CandidateProfile("conservative", 0.75, 0.15, 0.10),
 )
 
 
@@ -140,6 +157,28 @@ class ChartGenerator:
     ) -> tuple[Chart, ...]:
         analysis.validate()
         options.validate()
+
+        best_charts: tuple[Chart, ...] | None = None
+        best_score = float("-inf")
+        for profile in _CANDIDATE_PROFILES:
+            candidate_analysis = self._apply_profile(analysis, profile)
+            charts = self._generate_candidate(
+                candidate_analysis,
+                GenerationOptions(seed=f"{options.seed}:{profile.name}"),
+            )
+            score = self._score_candidate(charts, analysis)
+            if score > best_score:
+                best_score = score
+                best_charts = charts
+        if best_charts is None:
+            raise ValueError("No chart candidate could be generated.")
+        return best_charts
+
+    def _generate_candidate(
+        self,
+        analysis: AnalysisResult,
+        options: GenerationOptions,
+    ) -> tuple[Chart, ...]:
 
         selected_by_tier = self._select_nested_points(analysis.points)
         minimum_tier_by_index: dict[int, int] = {}
@@ -241,6 +280,86 @@ class ChartGenerator:
         result = tuple(charts)
         validate_nested_charts(result)
         return result
+
+    @staticmethod
+    def _apply_profile(
+        analysis: AnalysisResult,
+        profile: _CandidateProfile,
+    ) -> AnalysisResult:
+        base = ChartGenerator._normalize(point.strength for point in analysis.points)
+        percussive = ChartGenerator._normalize(
+            point.percussive_strength if point.percussive_strength is not None else point.strength
+            for point in analysis.points
+        )
+        melodic = ChartGenerator._normalize(
+            point.melodic_strength if point.melodic_strength is not None else point.strength
+            for point in analysis.points
+        )
+        points = tuple(
+            replace(
+                point,
+                strength=(
+                    profile.base_weight * base[index]
+                    + profile.percussive_weight * percussive[index]
+                    + profile.melodic_weight * melodic[index]
+                ),
+            )
+            for index, point in enumerate(analysis.points)
+        )
+        return replace(analysis, points=points)
+
+    @staticmethod
+    def _score_candidate(
+        charts: tuple[Chart, ...],
+        analysis: AnalysisResult,
+    ) -> float:
+        extreme = charts[-1]
+        selected_times = {note.time_ms for note in extreme.notes}
+        normalized_strength = ChartGenerator._normalize(point.strength for point in analysis.points)
+        covered_strength = 0.0
+        covered_count = 0
+        strong_total = 0
+        strong_covered = 0
+        for index, point in enumerate(analysis.points):
+            if point.time_ms in selected_times:
+                covered_strength += normalized_strength[index]
+                covered_count += 1
+            if normalized_strength[index] >= 0.75:
+                strong_total += 1
+                if point.time_ms in selected_times:
+                    strong_covered += 1
+
+        primary_notes: list[Note] = []
+        previous_time: int | None = None
+        for note in extreme.notes:
+            if note.time_ms != previous_time:
+                primary_notes.append(note)
+                previous_time = note.time_ms
+        repeats = sum(first.lane == second.lane for first, second in pairwise(primary_notes))
+        hold_ratio = (
+            sum(note.type is NoteType.HOLD for note in extreme.notes) / len(extreme.notes)
+            if extreme.notes
+            else 0.0
+        )
+        attack_quality = covered_strength / covered_count if covered_count else 0.0
+        strong_coverage = strong_covered / strong_total if strong_total else 0.0
+        repeat_ratio = repeats / (len(primary_notes) - 1) if len(primary_notes) > 1 else 0.0
+        hold_quality = 1 - min(1.0, abs(hold_ratio - 0.14) / 0.14)
+        return (
+            attack_quality * 0.40
+            + strong_coverage * 0.35
+            + hold_quality * 0.15
+            + (1 - repeat_ratio) * 0.10
+        )
+
+    @staticmethod
+    def _normalize(values: Iterable[float]) -> list[float]:
+        source = [float(value) for value in values]
+        minimum = min(source)
+        span = max(source) - minimum
+        if span <= 1e-12:
+            return [0.5] * len(source)
+        return [(value - minimum) / span for value in source]
 
     @staticmethod
     def _select_nested_points(points: tuple[FeaturePoint, ...]) -> tuple[set[int], ...]:

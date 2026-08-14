@@ -57,8 +57,10 @@ Validate a package:
 .\.venv\Scripts\keywave-creator.exe validate C:\Music\example.keywave
 ```
 
-Generation is deterministic for the same normalized media, metadata, offsets,
-algorithm version, and seed. FFmpeg/ffprobe are process-isolated with bounded
+Generation is deterministic for the same normalized media, metadata, algorithm
+version, and seed. Audio/video offsets are measured automatically from one
+sample-accurate canonical timeline; the user never calibrates generated maps.
+FFmpeg/ffprobe are process-isolated with bounded
 diagnostics; yt-dlp runs with updates, user config, cookies, and access bypass
 disabled. Playlist discovery is bounded and never turns on credential import.
 

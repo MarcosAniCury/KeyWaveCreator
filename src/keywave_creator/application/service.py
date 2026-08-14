@@ -89,8 +89,8 @@ class CreatorService:
 
             self._report(progress, ProgressStage.ANALYZING, 0.55, "Analyzing rhythm…")
             analysis = self._feature_extractor.analyze(
-                normalized.audio_path,
-                expected_duration_ms=info.duration_ms,
+                normalized.analysis_path,
+                expected_duration_ms=normalized.timeline.duration_ms,
                 cancellation=token,
             )
             token.raise_if_cancelled()
@@ -121,8 +121,12 @@ class CreatorService:
                         source_type=request.source_kind.value,
                         source_id=acquired.source_id,
                         generation_confidence=analysis.confidence,
-                        chart_offset_ms=request.chart_offset_ms,
-                        video_offset_ms=request.video_offset_ms,
+                        chart_offset_ms=self._microseconds_to_milliseconds(
+                            normalized.timeline.sync_report.analysis_to_playback_offset_us
+                        ),
+                        video_offset_ms=self._microseconds_to_milliseconds(
+                            normalized.timeline.video_offset_us
+                        ),
                     )
                 except (ContractError, OSError) as error:
                     raise CreatorError(
@@ -209,6 +213,10 @@ class CreatorService:
                 CreatorErrorCode.UNSUPPORTED_MEDIA,
                 "Media duration must be between 1 millisecond and 30 minutes.",
             )
+
+    @staticmethod
+    def _microseconds_to_milliseconds(value_us: int) -> int:
+        return int(value_us / 1_000 + (0.5 if value_us >= 0 else -0.5))
 
     @staticmethod
     def _report(

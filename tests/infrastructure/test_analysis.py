@@ -31,6 +31,7 @@ def test_streaming_analyzer_detects_synthetic_pulse_train(tmp_path: Path) -> Non
     assert 110 <= result.bpm <= 130
     assert len(result.points) >= 12
     assert result.points == tuple(sorted(result.points, key=lambda point: point.time_ms))
+    assert result.tempo_sections
     assert 0 <= result.confidence <= 1
 
 
@@ -105,7 +106,7 @@ def test_streaming_analyzer_tracks_attacks_instead_of_slow_volume_swells(
 
     assert len(result.points) <= len(expected_attacks_ms) + 2
     for expected_ms in expected_attacks_ms:
-        assert min(abs(point.time_ms - expected_ms) for point in result.points) <= 25
+        assert min(abs(point.time_ms - expected_ms) for point in result.points) <= 8
 
 
 def test_streaming_analyzer_measures_sustained_events_for_holds(tmp_path: Path) -> None:
@@ -133,5 +134,5 @@ def test_streaming_analyzer_measures_sustained_events_for_holds(tmp_path: Path) 
 
     for expected_ms in expected_attacks_ms:
         point = min(result.points, key=lambda candidate: abs(candidate.time_ms - expected_ms))
-        assert abs(point.time_ms - expected_ms) <= 25
+        assert abs(point.time_ms - expected_ms) <= 8
         assert point.sustain_ms >= 700

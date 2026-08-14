@@ -13,6 +13,7 @@ from keywave_creator.application.models import (
 from keywave_creator.application.service import CreatorService
 from keywave_creator.contract.package import PackageReader
 from keywave_creator.domain.analysis import AnalysisResult, FeaturePoint
+from keywave_creator.domain.media_timeline import AutomaticSyncReport, CanonicalAudioTimeline
 
 
 class FakeMediaProcessor:
@@ -33,7 +34,21 @@ class FakeMediaProcessor:
         cancellation.raise_if_cancelled()
         audio = working_directory / "song.ogg"
         audio.write_bytes(b"OggS\x00application-test")
-        return NormalizedMedia(audio_path=audio, video_path=None, cover_path=None)
+        analysis = working_directory / "analysis.wav"
+        analysis.write_bytes(b"RIFFapplication-test")
+        return NormalizedMedia(
+            audio_path=audio,
+            analysis_path=analysis,
+            video_path=None,
+            cover_path=None,
+            timeline=CanonicalAudioTimeline(
+                sample_rate_hz=48_000,
+                sample_count=240_000,
+                source_audio_start_us=100_000,
+                source_video_start_us=66_000,
+                sync_report=AutomaticSyncReport(12_000, 1_000, 0.98),
+            ),
+        )
 
 
 class FakeExtractor:
@@ -117,6 +132,8 @@ def test_service_creates_a_valid_package_and_reports_all_stages(tmp_path: Path) 
     package = PackageReader().read(destination)
     assert result.package_id == package.manifest.package_id
     assert result.note_counts == tuple(len(chart.notes) for chart in package.charts)
+    assert package.manifest.chart_offset_ms == 12
+    assert package.manifest.video_offset_ms == -34
     assert stages == [
         "validating",
         "acquiring",

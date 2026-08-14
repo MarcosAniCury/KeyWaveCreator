@@ -7,6 +7,8 @@ from enum import StrEnum
 from pathlib import Path
 from threading import Event
 
+from keywave_creator.domain.media_timeline import CanonicalAudioTimeline
+
 from .errors import CreatorError, CreatorErrorCode
 
 
@@ -50,8 +52,6 @@ class CreateLevelRequest:
     seed: str = "keywave-v1"
     output_directory: Path | None = None
     include_video: bool = True
-    chart_offset_ms: int = 0
-    video_offset_ms: int = 0
 
     def validate(self) -> None:
         if not self.source.strip():
@@ -83,16 +83,6 @@ class CreateLevelRequest:
                 CreatorErrorCode.INVALID_SOURCE,
                 "The generation seed must contain between 1 and 128 characters.",
             )
-        if not -10_000 <= self.chart_offset_ms <= 10_000:
-            raise CreatorError(
-                CreatorErrorCode.INVALID_SOURCE,
-                "Chart offset must be within -10000..10000 ms.",
-            )
-        if not -10_000 <= self.video_offset_ms <= 10_000:
-            raise CreatorError(
-                CreatorErrorCode.INVALID_SOURCE,
-                "Video offset must be within -10000..10000 ms.",
-            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +93,8 @@ class MediaInfo:
     width: int | None = None
     height: int | None = None
     frames_per_second: float | None = None
+    audio_start_us: int = 0
+    video_start_us: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,8 +143,10 @@ class SourceExpansionResult:
 @dataclass(frozen=True, slots=True)
 class NormalizedMedia:
     audio_path: Path
+    analysis_path: Path
     video_path: Path | None
     cover_path: Path | None
+    timeline: CanonicalAudioTimeline
 
 
 @dataclass(frozen=True, slots=True)

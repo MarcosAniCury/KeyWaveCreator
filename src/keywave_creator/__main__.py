@@ -40,8 +40,6 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--output", required=True, type=Path)
     create.add_argument("--seed", default="keywave-v1")
     create.add_argument("--no-video", action="store_true")
-    create.add_argument("--chart-offset-ms", type=int, default=0)
-    create.add_argument("--video-offset-ms", type=int, default=0)
     game_create = subparsers.add_parser(
         "game-create",
         help="Create a level for KeyWave Game through the machine-readable protocol",
@@ -107,8 +105,6 @@ def main(argv: list[str] | None = None) -> int:
                     destination=args.output,
                     seed=args.seed,
                     include_video=not args.no_video,
-                    chart_offset_ms=args.chart_offset_ms,
-                    video_offset_ms=args.video_offset_ms,
                 ),
                 progress=report,
             )
