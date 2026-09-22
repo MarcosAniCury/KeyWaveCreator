@@ -116,13 +116,18 @@ if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) {
 $applicationIcon = Join-Path $repoRoot "build\branding\KeyWave.ico"
 Assert-ValidWindowsIcon -Path $applicationIcon
 
-$ytDlpCache = Join-Path $cacheRoot "yt-dlp-2026.07.04.exe"
+$ytDlpCache = Join-Path $cacheRoot "yt-dlp-2026.08.19.exe"
 Get-VerifiedFile `
-    -Uri "https://github.com/yt-dlp/yt-dlp/releases/download/2026.07.04/yt-dlp.exe" `
-    -Sha256 "52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8" `
+    -Uri "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp.exe" `
+    -Sha256 "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a" `
     -Destination $ytDlpCache
 $ytDlp = Join-Path $toolStage "yt-dlp.exe"
 Copy-Item -LiteralPath $ytDlpCache -Destination $ytDlp -Force
+$ytDlpLicenses = Join-Path $cacheRoot "YTDLP-2026.08.19-LICENSES.txt"
+Get-VerifiedFile `
+    -Uri "https://raw.githubusercontent.com/yt-dlp/yt-dlp/2026.08.19/THIRD_PARTY_LICENSES.txt" `
+    -Sha256 "472aefe951c7db35e1657c1d13fd337140511ed6f2b329205105ad441c5a02b7" `
+    -Destination $ytDlpLicenses
 
 $denoArchive = Join-Path $cacheRoot "deno-2.8.1-x86_64-pc-windows-msvc.zip"
 Get-VerifiedFile `
@@ -200,6 +205,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $distribution "KeyWaveCreator.exe"))
 $distributionTools = Join-Path $distribution "tools"
 New-Item -ItemType Directory -Force $distributionTools | Out-Null
 Copy-Item -LiteralPath $ytDlp -Destination (Join-Path $distributionTools "yt-dlp.exe") -Force
+Copy-Item -LiteralPath $ytDlpLicenses -Destination (Join-Path $distributionTools "YTDLP_LICENSES.txt") -Force
 Copy-Item -LiteralPath (Join-Path $toolStage "deno.exe") -Destination (Join-Path $distributionTools "deno.exe") -Force
 Copy-Item -LiteralPath (Join-Path $ffmpegStage "ffmpeg.exe") -Destination (Join-Path $distributionTools "ffmpeg.exe") -Force
 Copy-Item -LiteralPath (Join-Path $ffmpegStage "ffprobe.exe") -Destination (Join-Path $distributionTools "ffprobe.exe") -Force

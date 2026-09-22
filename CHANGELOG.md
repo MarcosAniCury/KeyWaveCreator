@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.19.1 - 2026-09-22
+
+- Update the bundled YouTube downloader to restore downloads affected by HTTP
+  403 errors, keeping the Windows, Linux and Python dependency versions aligned.
+
+- Keep the application version aligned with Game for the combined Windows and
+  experimental Linux installers.
+
+## 0.19.0 - 2026-08-15
+
+- No user-facing changes in this release. The application version remains
+  aligned with KeyWave Game for coordinated installers.
+
 ## 0.18.0 - 2026-08-14
 
 - Extract KeyWave Creator from the original monorepo into its own independently
