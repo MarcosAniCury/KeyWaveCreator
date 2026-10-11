@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.20.0 - 2026-10-11
+
+- Balance newly generated holds with the Game's policy: at most 12% per
+  difficulty, no simultaneous holds across lanes, and at least one beat of
+  recovery (minimum 300 ms). Favor stronger musical sustains after selecting the
+  arrangement; preserve note starts, lanes, chords and nested difficulty notes.
+  Convert rejected holds to taps without changing existing packages. Identify new
+  generation as `creator-autosync-2.1.0`; package format unchanged.
+- Align the Windows and experimental Linux packages with Game 0.20.0.
+
 ## 0.19.1 - 2026-09-22
 
 - Update the bundled YouTube downloader to restore downloads affected by HTTP

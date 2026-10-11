@@ -19,8 +19,9 @@ from keywave_creator.contract.models import (
 )
 
 from .analysis import AnalysisResult, FeaturePoint
+from .hold_balancer import balance_holds
 
-ALGORITHM_VERSION = "creator-autosync-2.0.0"
+ALGORITHM_VERSION = "creator-autosync-2.1.0"
 HOLD_RELEASE_GAP_MS = 90
 MAX_HOLD_DURATION_MS = 2_000
 LANE_MEMORY_SIZE = 12
@@ -172,7 +173,13 @@ class ChartGenerator:
                 best_charts = charts
         if best_charts is None:
             raise ValueError("No chart candidate could be generated.")
-        return best_charts
+        # Preserve candidate selection, attacks and lane planning. Articulation
+        # is balanced only after choosing the existing highest-scoring arrangement.
+        balanced = balance_holds(best_charts, analysis)
+        for chart in balanced:
+            chart.validate(duration_ms=analysis.duration_ms)
+        validate_nested_charts(balanced)
+        return balanced
 
     def _generate_candidate(
         self,

@@ -60,6 +60,16 @@ Validate a package:
 Generation is deterministic for the same normalized media, metadata, algorithm
 version, and seed. Audio/video offsets are measured automatically from one
 sample-accurate canonical timeline; the user never calibrates generated maps.
+
+New charts generated with `creator-autosync-2.1.0` use holds as musical accents:
+at most 12% of notes in each difficulty, one active hold across all lanes, and
+one beat of recovery between holds (at least 300 ms). Short sustains remain taps;
+stronger attacks, melodic evidence and longer sustains receive priority. This
+final pass preserves the selected arrangement's note starts, lanes, chords and
+unchanged inheritance between difficulties. Rejected holds become taps, not gaps.
+Existing `.keywave` files are not rewritten; generate a new package to use this
+balance. The package format and reader compatibility remain unchanged.
+
 FFmpeg/ffprobe are process-isolated with bounded
 diagnostics; yt-dlp runs with updates, user config, cookies, and access bypass
 disabled. Playlist discovery is bounded and never turns on credential import.
